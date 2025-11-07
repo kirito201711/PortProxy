@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# PortProxy 一键安装管理脚本 (终极美化 & 增强版)
+# PortProxy 一键安装管理脚本 (终极美化 & 稳定版)
 #
 # 特性:
 # 1. 精美、动态的菜单界面，实时显示安装与服务状态.
-# 2. 下载时显示优雅的 spinner 加载动画.
+# 2. 使用稳定可靠的进度点动画，并在结束后显示成功/失败状态.
 # 3. 安装后自动启动并设置开机自启，无需确认.
 # 4. 增加服务管理功能：重启、停止、查看日志 (安装后可用).
 # 5. 交互流程优化，提供清晰的步骤指引和操作反馈.
@@ -79,22 +79,29 @@ press_enter_to_continue() {
     read -r
 }
 
-# Spinner 动画
-spinner() {
+# 进度指示器 (点动画，替代 spinner)
+show_progress() {
     local pid=$1
-    local spin='|/-\'
-    local i=0
+    local message=$2
+    printf "${CYAN}%s${NC}" "$message"
     while kill -0 "$pid" 2>/dev/null; do
-        i=$(( (i+1) %4 ))
-        printf "\r${CYAN}${spin:$i:1}${NC} 正在执行..."
-        sleep 0.1
+        printf "."
+        sleep 0.5
     done
-    printf "\r${GREEN}✔${NC} 操作完成.    \n"
+    wait "$pid"
+    local exit_code=$?
+    
+    if [ $exit_code -eq 0 ]; then
+        printf " ${GREEN}✔ 完成${NC}\n"
+    else
+        printf " ${RED}✖ 失败${NC} (退出码: $exit_code)\n"
+    fi
+    return $exit_code
 }
 
 # --- 功能函数 ---
 
-# 下载并解压 (带 Spinner)
+# 下载并解压
 download_and_extract() {
     step "1. 下载 PortProxy 组件"
     TMP_DIR=$(mktemp -d)
@@ -108,11 +115,12 @@ download_and_extract() {
         error "未找到 curl 或 wget。请先安装其中一个。"
     fi
     
-    spinner $!
-    if ! wait $!; then error "下载失败，请检查网络或 URL: $RELEASE_URL"; fi
+    show_progress $! "  - 正在下载..."
+    if [ $? -ne 0 ]; then error "下载失败，请检查网络或 URL: $RELEASE_URL"; fi
 
     step "2. 解压文件"
     tar -xzf "$TMP_DIR/portProxy.tar.gz" -C "$TMP_DIR" || error "解压失败。"
+    info "  - 解压完成。"
     EXTRACTED_PATH="$TMP_DIR"
 }
 
@@ -131,15 +139,15 @@ install_files() {
 prompt_for_config() {
     step "4. 配置管理面板"
     while true; do
-        read -p "$(echo -e "${YELLOW}请输入 Web 管理面板监听端口 [默认: 9090]: ${NC}")" user_admin_port < /dev/tty
+        read -p "$(echo -e "${YELLOW}  - 请输入 Web 管理面板监听端口 [默认: 9090]: ${NC}")" user_admin_port < /dev/tty
         user_admin_port=${user_admin_port:-9090}
         if [[ "$user_admin_port" =~ ^[0-9]+$ ]] && [ "$user_admin_port" -ge 1 ] && [ "$user_admin_port" -le 65535 ]; then break
         else error_msg "端口无效。请输入一个 1-65535 之间的数字。"; fi
     done
     while true; do
-        read -s -p "$(echo -e "${YELLOW}请输入 Web 管理面板密码 (输入时不可见): ${NC}")" user_admin_password < /dev/tty; echo
+        read -s -p "$(echo -e "${YELLOW}  - 请输入 Web 管理面板密码 (输入时不可见): ${NC}")" user_admin_password < /dev/tty; echo
         if [ -z "$user_admin_password" ]; then error_msg "密码不能为空，请重新输入。"; continue; fi
-        read -s -p "$(echo -e "${YELLOW}请再次输入密码以确认: ${NC}")" user_admin_password_confirm < /dev/tty; echo
+        read -s -p "$(echo -e "${YELLOW}  - 请再次输入密码以确认: ${NC}")" user_admin_password_confirm < /dev/tty; echo
         if [ "$user_admin_password" == "$user_admin_password_confirm" ]; then break
         else error_msg "两次输入的密码不匹配，请重试。"; fi
     done
@@ -175,7 +183,7 @@ PORTPROXY_OPTS="-admin=:${user_admin_port} -password='${user_admin_password}'"
 EOF
 
     systemctl daemon-reload
-    info "systemd 配置已重载。"
+    info "  - systemd 配置已重载。"
 }
 
 # 安装主流程
@@ -185,6 +193,7 @@ do_install() {
         read -p "是否覆盖安装？现有配置将丢失。 [y/N]: " confirm_overwrite < /dev/tty
         if [[ ! "$confirm_overwrite" =~ ^[yY]([eE][sS])?$ ]]; then
             info "操作已取消。"
+            press_enter_to_continue
             return
         fi
         do_uninstall "silent" # 先以静默模式卸载
@@ -198,10 +207,9 @@ do_install() {
     create_systemd_service
 
     step "6. 启动并设置开机自启"
-    systemctl enable "$SERVICE_NAME" >/dev/null
-    systemctl start "$SERVICE_NAME"
-    info "${SERVICE_NAME} 服务已启动并设置为开机自启。"
-
+    (systemctl enable "$SERVICE_NAME" &>/dev/null && systemctl start "$SERVICE_NAME") &
+    show_progress $! "  - 正在启动服务..."
+    
     echo -e "\n${GREEN}${BOLD}🎉 PortProxy 安装成功！ 🎉${NC}"
     echo "--------------------------------------------------"
     echo -e "  Web 管理面板: ${YELLOW}http://<你的服务器IP>:${user_admin_port}${NC}"
@@ -226,20 +234,18 @@ do_uninstall() {
         fi
     fi
 
-    step "正在停止并禁用 ${SERVICE_NAME} 服务..."
+    step "正在停止并禁用 ${SERVICE_NAME} 服务"
     (systemctl stop "$SERVICE_NAME" &>/dev/null; systemctl disable "$SERVICE_NAME" &>/dev/null) &
-    spinner $!
+    show_progress $! "  - 正在执行..."
 
-    step "正在删除相关文件..."
-    rm -f "$SERVICE_FILE"
-    rm -f "$ENV_FILE"
-    rm -f "$BIN_LINK"
+    step "正在删除相关文件"
+    rm -f "$SERVICE_FILE" "$ENV_FILE" "$BIN_LINK"
     rm -rf "$INSTALL_DIR"
-    info "文件已清理。"
+    info "  - 文件已清理。"
     
-    step "正在重载 systemd 配置..."
+    step "正在重载 systemd 配置"
     systemctl daemon-reload &
-    spinner $!
+    show_progress $! "  - 正在重载..."
 
     if [ "$silent_mode" != "silent" ]; then
         info "PortProxy 已成功卸载。"
@@ -249,24 +255,22 @@ do_uninstall() {
 
 # 服务管理功能
 do_restart() {
-    step "正在重启 ${SERVICE_NAME} 服务..."
+    step "正在重启 ${SERVICE_NAME} 服务"
     systemctl restart "$SERVICE_NAME" &
-    spinner $!
-    info "${SERVICE_NAME} 服务已重启。"
+    show_progress $! "  - 正在重启..."
     press_enter_to_continue
 }
 
 do_stop() {
-    step "正在停止 ${SERVICE_NAME} 服务..."
+    step "正在停止 ${SERVICE_NAME} 服务"
     systemctl stop "$SERVICE_NAME" &
-    spinner $!
-    info "${SERVICE_NAME} 服务已停止。"
+    show_progress $! "  - 正在停止..."
     press_enter_to_continue
 }
 
 view_logs() {
-    step "正在显示 ${SERVICE_NAME} 的实时日志 (最近 100 条)..."
-    echo -e "${DIM}按 Ctrl+C 退出日志查看。${NC}"
+    step "正在显示 ${SERVICE_NAME} 的实时日志 (最近 100 条)"
+    echo -e "${DIM}  (按 Ctrl+C 退出日志查看)${NC}"
     sleep 1
     journalctl -u "$SERVICE_NAME" -f -n 100
     press_enter_to_continue
@@ -312,7 +316,6 @@ main() {
     check_root
     check_systemd
 
-    # 支持命令行参数
     if [[ "$1" == "install" ]]; then
         check_status; do_install; exit 0
     elif [[ "$1" == "uninstall" ]]; then
