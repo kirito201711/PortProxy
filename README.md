@@ -9,7 +9,16 @@
 ![alt text](https://img.shields.io/badge/OS-Linux%20(systemd)-brightgreen)
 
 ---
+### 🚀 快速开始
 
+#### 一键安装命令
+
+打开你的终端，执行以下命令即可启动安装向导：
+
+```bash
+curl -sSL [https://raw.githubusercontent.com/kirito201711/PortProxy/main/install.sh](https://raw.githubusercontent.com/kirito201711/PortProxy/main/install.sh) | bash
+```
+---
 ### ✨ 脚本特性
 
 * **一键安装**: 只需一条命令即可自动下载、安装并配置好 PortProxy。
@@ -32,15 +41,7 @@
 
 ---
 
-### 🚀 快速开始
 
-#### 一键安装命令
-
-打开你的终端，执行以下命令即可启动安装向导：
-
-```bash
-curl -sSL [https://raw.githubusercontent.com/kirito201711/PortProxy/main/install.sh](https://raw.githubusercontent.com/kirito201711/PortProxy/main/install.sh) | bash
-```
 ### 📜 许可证
 
 本项目采用 [MIT 许可证](https://github.com/kirito201711/PortProxy/blob/main/LICENSE)。
