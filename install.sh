@@ -27,6 +27,7 @@ DIM='\033[2m' # Dim color for disabled options
 IS_INSTALLED=false
 IS_ACTIVE=false
 INSTALL_STATUS=""
+PROXY_URL=""
 
 # --- 辅助函数 ---
 info() { echo -e "${GREEN}✔${NC} $1"; }
@@ -101,9 +102,30 @@ check_status() {
 
 # --- 功能函数 ---
 
+# 交互式获取代理配置
+prompt_for_proxy() {
+    PROXY_URL="" # 每次调用时重置
+    prompt "是否为 GitHub Release 使用下载代理? (解决国内访问慢问题) [Y/n]: " use_proxy
+    if [[ ! "$use_proxy" =~ ^[nN]$ ]]; then
+        local default_proxy="https://gh-proxy.com/"
+        prompt "请输入代理地址 [默认: ${default_proxy}]: " custom_proxy
+        PROXY_URL=${custom_proxy:-${default_proxy}}
+        # 确保代理地址以 / 结尾
+        if [[ "${PROXY_URL: -1}" != "/" ]]; then
+            PROXY_URL="${PROXY_URL}/"
+        fi
+        info "已启用下载代理: ${CYAN}${PROXY_URL}${NC}"
+    else
+        info "将不使用下载代理，直接从 GitHub 下载。"
+    fi
+}
+
 # 下载并解压
 download_and_extract() {
-    info "正在准备下载 PortProxy..."
+    local url_to_download="$1"
+    info "准备从以下地址下载 PortProxy:"
+    echo -e "${CYAN}${url_to_download}${NC}"
+    
     TMP_DIR=$(mktemp -d)
     # 设置 trap 以确保临时目录在脚本退出时被删除
     trap 'rm -rf "$TMP_DIR"' EXIT
@@ -111,10 +133,10 @@ download_and_extract() {
     echo
     if command -v curl &> /dev/null; then
         info "使用 curl 下载 (带进度条)..."
-        curl -L --progress-bar -o "$TMP_DIR/portProxy.tar.gz" "$RELEASE_URL" || error "使用 curl 下载失败。"
+        curl -L --progress-bar -o "$TMP_DIR/portProxy.tar.gz" "$url_to_download" || error "使用 curl 下载失败。"
     elif command -v wget &> /dev/null; then
         info "使用 wget 下载 (带进度条)..."
-        wget -q --show-progress -O "$TMP_DIR/portProxy.tar.gz" "$RELEASE_URL" || error "使用 wget 下载失败。"
+        wget -q --show-progress -O "$TMP_DIR/portProxy.tar.gz" "$url_to_download" || error "使用 wget 下载失败。"
     else
         error "未找到 curl 或 wget。请先安装其中一个。"
     fi
@@ -187,7 +209,9 @@ EOF
 
 # 安装后显示总结信息
 post_install_summary() {
-    local ip_address=$(hostname -I | awk '{print $1}')
+    local ip_address
+    ip_address=$(hostname -I | awk '{print $1}')
+    [ -z "$ip_address" ] && ip_address="127.0.0.1" # Fallback
     echo -e "${PURPLE}-----------------------------------------------------${NC}"
     echo -e "${YELLOW}🎉 PortProxy 安装成功! 🎉${NC}"
     echo
@@ -215,7 +239,10 @@ do_install() {
         do_uninstall "silent" # 先以静默模式卸载
     fi
 
-    download_and_extract
+    prompt_for_proxy
+    local FINAL_RELEASE_URL="${PROXY_URL}${RELEASE_URL}"
+
+    download_and_extract "$FINAL_RELEASE_URL"
     install_files
     prompt_for_config
     create_systemd_service
@@ -285,8 +312,8 @@ manage_service_menu() {
             1) execute_with_spinner "启动服务" systemctl start "$SERVICE_NAME"; press_any_key ;;
             2) execute_with_spinner "停止服务" systemctl stop "$SERVICE_NAME"; press_any_key ;;
             3) execute_with_spinner "重启服务" systemctl restart "$SERVICE_NAME"; press_any_key ;;
-            4) clear; systemctl status "$SERVICE_NAME"; press_any_key ;;
-            5) clear; journalctl -u "$SERVICE_NAME" -f -n 50; press_any_key ;;
+            4) clear; systemctl --no-pager status "$SERVICE_NAME"; press_any_key ;;
+            5) clear; journalctl -u "$SERVICE_NAME" -f -n 50 --no-pager; press_any_key ;;
             0) break ;;
             *) error_msg "无效的选项，请重新输入。"; sleep 1.5 ;;
         esac
@@ -308,7 +335,7 @@ show_menu() {
     echo -e "${CYAN}╔═════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║                                                     ║${NC}"
     echo -e "${CYAN}║           ${YELLOW}PortProxy 一键安装管理脚本${CYAN}           ║${NC}"
-    echo -e "${CYAN}║           ${DIM}v2.0 Enhanced by AI${CYAN}                ║${NC}"
+    echo -e "${CYAN}║           ${DIM}v2.1 Proxy Enhanced by AI${CYAN}         ║${NC}"
     echo -e "${CYAN}║                                                     ║${NC}"
     echo -e "${CYAN}╚═════════════════════════════════════════════════════╝${NC}"
     echo
