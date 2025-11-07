@@ -68,7 +68,7 @@ install_files() {
     cp "${EXTRACTED_PATH}/portProxy" "${EXTRACTED_PATH}/index.html" "${EXTRACTED_PATH}/login.html" "$INSTALL_DIR/" || error "复制文件失败。"
     chmod +x "${INSTALL_DIR}/portProxy" || error "设置执行权限失败。"
     info "创建软链接到 ${BIN_LINK}..."
-    ln -sf "${INSTALL_DIR}/portProxy" "$LINK_PATH" || error "创建软链接失败。"
+    ln -sf "${INSTALL_DIR}/portProxy" "$BIN_LINK" || error "创建软链接失败。"
 }
 
 # 交互式获取用户配置
