@@ -4,7 +4,7 @@
 ![alt text](https://img.shields.io/badge/language-Shell-blue)
 ![alt text](https://img.shields.io/badge/OS-Linux%20(systemd)-brightgreen)
 
-🚀 还在为转发一个TCP端口而修改复杂的配置文件和重启服务而烦恼吗？
+还在为转发一个TCP端口而修改复杂的配置文件和重启服务而烦恼吗？
 
 PortProxy 为你提供了一个“傻瓜式”的解决方案。它就是一个带网页管理界面的TCP端口转发工具，让你点几下鼠标就能搞定一切。
 
