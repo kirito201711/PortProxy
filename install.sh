@@ -68,22 +68,22 @@ install_files() {
     cp "${EXTRACTED_PATH}/portProxy" "${EXTRACTED_PATH}/index.html" "${EXTRACTED_PATH}/login.html" "$INSTALL_DIR/" || error "复制文件失败。"
     chmod +x "${INSTALL_DIR}/portProxy" || error "设置执行权限失败。"
     info "创建软链接到 ${BIN_LINK}..."
-    ln -sf "${INSTALL_DIR}/portProxy" "$BIN_LINK" || error "创建软链接失败。"
+    ln -sf "${INSTALL_DIR}/portProxy" "$LINK_PATH" || error "创建软链接失败。"
 }
 
 # 交互式获取用户配置
 prompt_for_config() {
     info "开始进行交互式配置..."
     while true; do
-        read -p "请输入 Web 管理面板的监听端口 [默认: 9090]: " user_admin_port
+        read -p "请输入 Web 管理面板的监听端口 [默认: 9090]: " user_admin_port < /dev/tty
         user_admin_port=${user_admin_port:-9090}
         if [[ "$user_admin_port" =~ ^[0-9]+$ ]] && [ "$user_admin_port" -ge 1 ] && [ "$user_admin_port" -le 65535 ]; then break
         else error_msg "端口无效。请输入一个 1-65535 之间的数字。"; fi
     done
     while true; do
-        read -s -p "请输入 Web 管理面板的密码 (输入时不可见): " user_admin_password; echo
+        read -s -p "请输入 Web 管理面板的密码 (输入时不可见): " user_admin_password < /dev/tty; echo
         if [ -z "$user_admin_password" ]; then error_msg "密码不能为空，请重新输入。"; continue; fi
-        read -s -p "请再次输入密码以确认: " user_admin_password_confirm; echo
+        read -s -p "请再次输入密码以确认: " user_admin_password_confirm < /dev/tty; echo
         if [ "$user_admin_password" == "$user_admin_password_confirm" ]; then break
         else error_msg "两次输入的密码不匹配，请重试。"; fi
     done
@@ -127,12 +127,11 @@ do_install() {
     info "--- 开始安装 PortProxy ---"
     if [ -d "$INSTALL_DIR" ]; then
         warn "检测到旧的安装目录 (${INSTALL_DIR})。"
-        read -p "是否覆盖安装？ [y/N]: " confirm_overwrite
+        read -p "是否覆盖安装？ [y/N]: " confirm_overwrite < /dev/tty
         if [[ ! "$confirm_overwrite" =~ ^[yY]([eE][sS])?$ ]]; then
             info "操作已取消。"
             exit 0
         fi
-        # 覆盖前先执行一次卸载流程，确保干净
         do_uninstall "silent"
     fi
 
@@ -157,7 +156,7 @@ do_uninstall() {
     local silent_mode=$1
     if [ "$silent_mode" != "silent" ]; then
         info "--- 开始卸载 PortProxy ---"
-        read -p "确定要卸载 PortProxy 吗？所有配置文件和规则都将被删除。 [y/N]: " confirm_uninstall
+        read -p "确定要卸载 PortProxy 吗？所有配置文件和规则都将被删除。 [y/N]: " confirm_uninstall < /dev/tty
         if [[ ! "$confirm_uninstall" =~ ^[yY]([eE][sS])?$ ]]; then
             info "操作已取消。"
             exit 0
@@ -195,7 +194,7 @@ show_menu() {
     echo -e "-------------------------------------"
     echo -e " ${GREEN}0.${NC} 退出脚本"
     echo -e "${CYAN}=====================================${NC}"
-    read -p "请输入选项 [0-2]: " choice
+    read -p "请输入选项 [0-2]: " choice < /dev/tty
 }
 
 # 主函数
@@ -203,35 +202,19 @@ main() {
     check_root
     check_systemd
 
-    # 如果有参数传入，则直接执行对应功能 (用于非交互式场景)
     if [[ "$1" == "install" ]]; then
-        do_install
-        exit 0
+        do_install; exit 0
     elif [[ "$1" == "uninstall" ]]; then
-        do_uninstall
-        exit 0
+        do_uninstall; exit 0
     fi
     
-    # 循环显示菜单
     while true; do
         show_menu
         case $choice in
-            1)
-                do_install
-                break
-                ;;
-            2)
-                do_uninstall
-                break
-                ;;
-            0)
-                echo "退出脚本。"
-                exit 0
-                ;;
-            *)
-                error_msg "无效的选项，请重新输入。"
-                sleep 1.5
-                ;;
+            1) do_install; break ;;
+            2) do_uninstall; break ;;
+            0) echo "退出脚本。"; exit 0 ;;
+            *) error_msg "无效的选项，请重新输入。"; sleep 1.5 ;;
         esac
     done
 }
