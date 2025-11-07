@@ -16,7 +16,7 @@
 打开你的终端，执行以下命令即可启动安装向导：
 
 ```bash
-curl -sSL [https://raw.githubusercontent.com/kirito201711/PortProxy/main/install.sh](https://raw.githubusercontent.com/kirito201711/PortProxy/main/install.sh) | bash
+curl -sSL https://raw.githubusercontent.com/kirito201711/PortProxy/main/install.sh | bash
 ```
 ---
 ### ✨ 脚本特性
