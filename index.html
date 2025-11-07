@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>动态 TCP 转发器管理面板</title>
+    <style>
+        /* (Existing body, container, h1, h2 styles are fine) */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 40px 20px;
+            box-sizing: border-box;
+            background: linear-gradient(135deg, #f0f8ff, #fde2e4, #fff1e6);
+            color: #555;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            padding: 30px;
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        }
+
+        h1, h2 {
+            color: #4a4e69;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 10px;
+            margin-top: 0;
+            font-weight: 600;
+        }
+        
+        h2 {
+             margin-top: 30px;
+             display: flex;
+             justify-content: space-between;
+             align-items: center;
+        }
+
+        /* (Existing table, td, tr styles are fine) */
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 8px;
+            margin-top: 25px;
+        }
+        
+        /* *** MODIFIED: Show table header now *** */
+        thead {
+            text-align: left;
+        }
+        th {
+            padding: 10px 15px;
+            color: #6c757d;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        td {
+            background: #fff;
+            padding: 15px;
+            vertical-align: middle;
+        }
+
+        tr td:first-child { border-top-left-radius: 12px; border-bottom-left-radius: 12px; }
+        tr td:last-child { border-top-right-radius: 12px; border-bottom-right-radius: 12px; }
+        tr:hover td { background-color: #f5faff; }
+
+        /* (Existing input, button styles are fine) */
+        input[type="text"] {
+            width: 100%; /* In modal, they'll be stacked */
+            padding: 12px 20px;
+            margin-bottom: 15px; /* Spacing inside modal */
+            border: 1px solid #ddd;
+            border-radius: 30px;
+            background: #fff;
+            color: #555;
+            font-size: 15px;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+        input[type="text"]::placeholder { color: #aaa; }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #80c7ff;
+            box-shadow: 0 0 0 3px rgba(130, 200, 255, 0.5);
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            color: #fff;
+            font-weight: bold;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.12);
+        }
+        
+        .btn-add { background-color: #00a6fb; }
+        .btn-add:hover { background-color: #0095e0; }
+        .btn-delete { background-color: #ff6b6b; margin-left: 5px; }
+        .btn-delete:hover { background-color: #ee5a5a; }
+        /* *** NEW: Edit button style *** */
+        .btn-edit { background-color: #ffc107; }
+        .btn-edit:hover { background-color: #e0a800; }
+
+        /* *** NEW: Action buttons container *** */
+        .actions-cell {
+            display: flex;
+            justify-content: flex-end; /* Align buttons to the right */
+        }
+
+        /* (Existing status styles are fine) */
+        .status {
+            margin-top: 20px; padding: 12px; border-radius: 12px;
+            display: none; border: 1px solid;
+        }
+        .status.success { background-color: #e6ffed; color: #2b9348; border-color: #b7e4c7; }
+        .status.error { background-color: #ffeded; color: #c9184a; border-color: #ffb3c1; }
+
+        /* *** NEW: Modal Styles *** */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4);
+            display: none; /* Hidden by default */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #fff;
+            padding: 30px 40px;
+            border-radius: 24px;
+            width: 90%;
+            max-width: 450px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .modal-close {
+            position: absolute;
+            top: 15px; right: 20px;
+            font-size: 24px;
+            border: none; background: none;
+            cursor: pointer; color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- *** MODIFIED: "Add" button now just opens the modal *** -->
+        <h2>当前规则列表 <button id="add-rule-btn" class="btn-add">添加新规则</button></h2>
+        <div id="status-message" class="status"></div>
+        
+        <table id="rules-table">
+            <!-- *** MODIFIED: Added Name column header *** -->
+            <thead><tr><th>名称</th><th>本地地址</th><th>目标地址</th><th>操作</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <!-- *** NEW: Modal for adding/editing rules *** -->
+    <div id="rule-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button id="modal-close-btn" class="modal-close">&times;</button>
+            <h2 id="modal-title">添加新规则</h2>
+            <form id="rule-form">
+                <!-- This hidden input is key for tracking which rule we are editing -->
+                <input type="hidden" id="original_local_addr">
+                
+                <input type="text" id="rule_name" placeholder="规则名称 (例如: 我的SSH)">
+                <input type="text" id="local_port" placeholder="本地监听端口 (例如: 8080)" required>
+                <input type="text" id="remote_addr" placeholder="目标服务器地址 (例如: 1.2.3.4:22)" required>
+                
+                <button type="submit" id="modal-submit-btn" class="btn-add" style="width: 100%;">确认添加</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // *** MODIFIED: All JS rewritten for new modal flow ***
+
+        // DOM Elements
+        const tableBody = document.querySelector('#rules-table tbody');
+        const statusMessage = document.getElementById('status-message');
+        const addRuleBtn = document.getElementById('add-rule-btn');
+        const ruleModal = document.getElementById('rule-modal');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const ruleForm = document.getElementById('rule-form');
+        const modalTitle = document.getElementById('modal-title');
+        const modalSubmitBtn = document.getElementById('modal-submit-btn');
+
+        // Form Inputs
+        const originalLocalAddrInput = document.getElementById('original_local_addr');
+        const ruleNameInput = document.getElementById('rule_name');
+        const localPortInput = document.getElementById('local_port');
+        const remoteAddrInput = document.getElementById('remote_addr');
+
+        // Show/Hide Modal
+        const showModal = () => { ruleModal.style.display = 'flex'; };
+        const hideModal = () => { ruleModal.style.display = 'none'; };
+
+        // Open Modal for Adding a New Rule
+        function openAddModal() {
+            ruleForm.reset();
+            originalLocalAddrInput.value = ''; // Ensure this is empty for 'add' mode
+            modalTitle.textContent = '添加新规则';
+            modalSubmitBtn.textContent = '确认添加';
+            modalSubmitBtn.className = 'btn-add'; // Reset button color
+            showModal();
+        }
+
+        // Open Modal for Editing an Existing Rule
+        function openEditModal(rule) {
+            ruleForm.reset();
+            modalTitle.textContent = '修改规则';
+            modalSubmitBtn.textContent = '确认修改';
+            modalSubmitBtn.className = 'btn-add'; // Or use a dedicated edit color
+
+            // Populate form
+            originalLocalAddrInput.value = rule.local_addr;
+            ruleNameInput.value = rule.name;
+            remoteAddrInput.value = rule.remote_addr;
+            // Extract port from "0.0.0.0:port"
+            const port = rule.local_addr.split(':')[1] || '';
+            localPortInput.value = port;
+            
+            showModal();
+        }
+
+        // Fetch and Render Rules
+        async function fetchRules() {
+            try {
+                const response = await fetch('/api/rules');
+                if (!response.ok) throw new Error('无法获取规则');
+                const rules = await response.json() || [];
+                tableBody.innerHTML = ''; // Clear existing rows
+                
+                rules.forEach(rule => {
+                    const row = tableBody.insertRow();
+
+                    // Name Cell
+                    const nameCell = row.insertCell();
+                    nameCell.textContent = rule.name || 'N/A';
+                    nameCell.style.fontWeight = '500';
+
+                    // Local & Remote Cells
+                    row.insertCell().textContent = rule.local_addr;
+                    row.insertCell().textContent = rule.remote_addr;
+
+                    // Action Cell
+                    const actionCell = row.insertCell();
+                    actionCell.className = 'actions-cell';
+                    actionCell.style.width = '150px';
+
+                    const editBtn = document.createElement('button');
+                    editBtn.className = 'btn-edit';
+                    editBtn.textContent = '修改';
+                    editBtn.onclick = () => openEditModal(rule);
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'btn-delete';
+                    deleteBtn.textContent = '删除';
+                    deleteBtn.onclick = () => deleteRule(rule.local_addr);
+                    
+                    actionCell.appendChild(editBtn);
+                    actionCell.appendChild(deleteBtn);
+                });
+            } catch (error) {
+                showStatus('获取规则失败: ' + error.message, 'error');
+            }
+        }
+
+        // Handle Form Submission (for both Add and Edit)
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+
+            const isEditing = originalLocalAddrInput.value !== '';
+            
+            const ruleData = {
+                name: ruleNameInput.value.trim(),
+                local_addr: `0.0.0.0:${localPortInput.value.trim()}`,
+                remote_addr: remoteAddrInput.value.trim()
+            };
+
+            let url = '/api/rules';
+            let method = 'POST';
+            let body = ruleData;
+
+            if (isEditing) {
+                method = 'PUT';
+                // For PUT, we need to send the original address to identify the rule
+                body = { ...ruleData, original_local_addr: originalLocalAddrInput.value };
+            }
+
+            try {
+                const response = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                if (response.ok) {
+                    showStatus(`规则${isEditing ? '修改' : '添加'}成功!`, 'success');
+                    hideModal();
+                    fetchRules();
+                } else {
+                    const errorText = await response.text();
+                    throw new Error(errorText || '未知错误');
+                }
+            } catch (error) {
+                // Keep modal open on error to allow user to fix input
+                showStatus(`${isEditing ? '修改' : '添加'}规则失败: ${error.message}`, 'error', false);
+            }
+        }
+
+        // Delete Rule
+        async function deleteRule(localAddr) {
+            if (!confirm(`确定要删除这条规则吗？\n(${localAddr})`)) return;
+            try {
+                const response = await fetch('/api/rules', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ local_addr: localAddr })
+                });
+                if (response.ok) {
+                    showStatus('规则删除成功!', 'success');
+                    fetchRules();
+                } else {
+                    const errorText = await response.text();
+                    throw new Error(errorText || '未知错误');
+                }
+            } catch (error) {
+                showStatus('删除规则失败: ' + error.message, 'error');
+            }
+        }
+        
+        // Show Status Message
+        function showStatus(message, type, autoHide = true) {
+            statusMessage.textContent = message;
+            statusMessage.className = 'status ' + type;
+            statusMessage.style.display = 'block';
+            if (autoHide) {
+                setTimeout(() => { statusMessage.style.display = 'none'; }, 5000);
+            }
+        }
+
+        // Event Listeners Setup
+        document.addEventListener('DOMContentLoaded', () => {
+            addRuleBtn.addEventListener('click', openAddModal);
+            modalCloseBtn.addEventListener('click', hideModal);
+            ruleModal.addEventListener('click', (e) => {
+                if (e.target === ruleModal) hideModal(); // Close if clicking on overlay
+            });
+            ruleForm.addEventListener('submit', handleFormSubmit);
+            
+            fetchRules(); // Initial load
+        });
+    </script>
+</body>
+</html>
