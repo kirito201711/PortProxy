@@ -14,10 +14,12 @@
 #### 一键安装命令
 
 打开你的终端，执行以下命令即可启动安装向导：
-```bash
-https://gh-proxy.com/https://raw.githubusercontent.com/kirito201711/PortProxy/main/install.sh
-```
 
+中国大陆：
+```bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/kirito201711/PortProxy/main/install.sh | bash
+```
+国际：
 ```bash
 curl -sSL https://raw.githubusercontent.com/kirito201711/PortProxy/main/install.sh | bash
 ```
