@@ -88,7 +88,7 @@ func main() {
                 Handler: webHandlers(manager, exeDir),
         }
 
-        log.Printf("零拷贝 TCP 转发器已启动...")
+        log.Printf("TCP 转发器已启动...")
 
         displayHost, displayPort, _ := net.SplitHostPort(globalConfig.AdminAddr)
         if displayHost == "" || displayHost == "0.0.0.0" {
@@ -159,7 +159,6 @@ func loadConfig(path string) {
         if err := json.Unmarshal(configData, &globalConfig); err != nil {
                 log.Fatalf("解析配置文件 %s 失败: %v", path, err)
         }
-        // 日志已删除: log.Printf("已从 %s 加载配置", path)
 }
 
 // --- Web & Auth Handlers ---
@@ -260,19 +259,14 @@ func NewProxyManager(rulesPath string) *ProxyManager {
 func (pm *ProxyManager) loadRules() {
         data, err := os.ReadFile(pm.rulesPath)
         if err != nil {
-                // 日志已删除: log.Printf("无法读取规则文件 %s: %v", pm.rulesPath, err)
                 return
         }
         var rulesToLoad []*ForwardRule
         if err := json.Unmarshal(data, &rulesToLoad); err != nil {
-                // 日志已删除: log.Printf("解析规则文件 %s 失败: %v", pm.rulesPath, err)
                 return
         }
-        // 日志已删除: log.Printf("从 %s 加载 %d 条规则...", pm.rulesPath, len(rulesToLoad))
         for _, rule := range rulesToLoad {
-                if _, err := pm.AddRule(rule.Name, rule.LocalAddr, rule.RemoteAddr); err != nil {
-                        // 日志已删除: log.Printf("加载规则 %s -> %s 失败: %v", rule.LocalAddr, rule.RemoteAddr, err)
-                }
+                _, _ = pm.AddRule(rule.Name, rule.LocalAddr, rule.RemoteAddr)
         }
 }
 
@@ -282,7 +276,7 @@ func (pm *ProxyManager) saveRules() error {
         for _, rule := range pm.rules {
                 rulesToSave = append(rulesToSave, &ForwardRule{Name: rule.Name, LocalAddr: rule.LocalAddr, RemoteAddr: rule.RemoteAddr})
         }
-        pm.mu.RUnlock() // Release lock before I/O
+        pm.mu.RUnlock()
 
         data, err := json.MarshalIndent(rulesToSave, "", "  ")
         if err != nil {
@@ -316,17 +310,13 @@ func (pm *ProxyManager) AddRule(name, localAddr, remoteAddr string) (*ForwardRul
         }
         pm.rules[localAddr] = rule
         go pm.startListenerLoop(rule)
-        pm.mu.Unlock() // Unlock BEFORE saving
+        pm.mu.Unlock()
 
-        if err := pm.saveRules(); err != nil {
-                // 日志已删除: log.Printf("警告: 添加规则后持久化失败: %v", err)
-        }
-        // 日志已删除: log.Printf("规则已添加: %s (%s -> %s)", name, localAddr, remoteAddr)
+        _ = pm.saveRules()
         return rule, nil
 }
 
-func (pm *ProxyManager) UpdateRule(originalLocalAddr, newName, newLocalAddr, newRemoteAddr string) error {
-        if !strings.Contains(newLocalAddr, ":") {
+func (pm *ProxyManager) UpdateRule(originalLocalAddr, newName, newLocalAddr, newRemoteAddr string) error {        if !strings.Contains(newLocalAddr, ":") {
                 newLocalAddr = "0.0.0.0:" + newLocalAddr
         }
 
@@ -348,12 +338,8 @@ func (pm *ProxyManager) UpdateRule(originalLocalAddr, newName, newLocalAddr, new
                 }
                 rule.Name = newName
                 pm.mu.Unlock()
-
-                // 日志已删除: log.Printf("规则 '%s' (%s) 名称已更新为 '%s'，现有连接不受影响。", originalLocalAddr, originalName, newName)
                 return pm.saveRules()
         }
-
-        // 日志已删除: log.Printf("规则 '%s' 的地址已更改 (新本地: %s, 新远程: %s)，将重启规则并断开现有连接。", originalLocalAddr, newLocalAddr, newRemoteAddr)
 
         if err := pm.DeleteRule(originalLocalAddr); err != nil {
                 return fmt.Errorf("更新失败：无法删除旧规则 %s: %w", originalLocalAddr, err)
@@ -378,17 +364,14 @@ func (pm *ProxyManager) DeleteRule(localAddr string) error {
 
         rule.connsMu.Lock()
         for conn := range rule.activeConns {
-                conn.Close()
+                _ = conn.Close()
         }
         rule.connsMu.Unlock()
 
         delete(pm.rules, localAddr)
-        pm.mu.Unlock() // Unlock BEFORE saving
+        pm.mu.Unlock()
 
-        if err := pm.saveRules(); err != nil {
-                // 日志已删除: log.Printf("警告: 删除规则后持久化失败: %v", err)
-        }
-        // 日志已删除: log.Printf("规则已删除: %s (%s -> %s)。已关闭 %d 个活动连接。", rule.Name, rule.LocalAddr, rule.RemoteAddr, activeCount)
+        _ = pm.saveRules()
         return nil
 }
 
@@ -461,7 +444,6 @@ func (pm *ProxyManager) startListenerLoop(rule *ForwardRule) {
                         if strings.Contains(err.Error(), "use of closed network connection") {
                                 return
                         }
-                        // 日志已删除: log.Printf("监听 %s 时发生错误: %v", rule.LocalAddr, err)
                         continue
                 }
 
@@ -478,8 +460,13 @@ func (pm *ProxyManager) handleConnection(clientConn net.Conn, rule *ForwardRule)
                 rule.connsMu.Lock()
                 delete(rule.activeConns, clientConn)
                 rule.connsMu.Unlock()
-                clientConn.Close()
+                _ = clientConn.Close()
         }()
+
+        // 禁用客户端连接的 Nagle 算法
+        if tcpClientConn, ok := clientConn.(*net.TCPConn); ok {
+                _ = tcpClientConn.SetNoDelay(true)
+        }
 
         pm.mu.RLock()
         remoteAddr := rule.RemoteAddr
@@ -487,10 +474,14 @@ func (pm *ProxyManager) handleConnection(clientConn net.Conn, rule *ForwardRule)
 
         remoteConn, err := net.DialTimeout("tcp", remoteAddr, 10*time.Second)
         if err != nil {
-                // 日志已删除: log.Printf("无法连接到远程地址 %s: %v", remoteAddr, err)
                 return
         }
         defer remoteConn.Close()
+
+        // 禁用远程连接的 Nagle 算法
+        if tcpRemoteConn, ok := remoteConn.(*net.TCPConn); ok {
+                _ = tcpRemoteConn.SetNoDelay(true)
+        }
 
         var wg sync.WaitGroup
         wg.Add(2)
