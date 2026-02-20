@@ -42,7 +42,6 @@ func runProxy(local, remote string) {
 		log.Printf("端口占用或失败 [%s]: %v", local, err)
 		return
 	}
-	// 修改了日志文字，避免误解
 	log.Printf("转发服务就绪: 本机[%s] >>> 目标[%s]", local, remote)
 
 	for {
@@ -57,15 +56,49 @@ func runProxy(local, remote string) {
 func handleConn(clientConn net.Conn, remoteAddr string) {
 	defer clientConn.Close()
 
-	remoteConn, err := net.DialTimeout("tcp", remoteAddr, 5*time.Second)
+	// 1. 设置客户端连接 Keep-Alive
+	if tcp, ok := clientConn.(*net.TCPConn); ok {
+		_ = tcp.SetNoDelay(true)
+		_ = tcp.SetKeepAlive(true)
+		_ = tcp.SetKeepAlivePeriod(30 * time.Second)
+	}
+
+	// 2. 拨号目标地址，自带保活与超时
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	remoteConn, err := dialer.Dial("tcp", remoteAddr)
 	if err != nil {
 		return
 	}
 	defer remoteConn.Close()
 
-	if tcp, ok := clientConn.(*net.TCPConn); ok { _ = tcp.SetNoDelay(true) }
-	if tcp, ok := remoteConn.(*net.TCPConn); ok { _ = tcp.SetNoDelay(true) }
+	if tcp, ok := remoteConn.(*net.TCPConn); ok {
+		_ = tcp.SetNoDelay(true)
+	}
 
-	go io.Copy(remoteConn, clientConn)
-	io.Copy(clientConn, remoteConn)
+	// 3. 核心修复：引入 errChan 实现双端联动关闭机制
+	errChan := make(chan error, 2)
+
+	// 协程1：远程 -> 客户端
+	go func() {
+		_, err := io.Copy(clientConn, remoteConn)
+		errChan <- err
+	}()
+
+	// 协程2：客户端 -> 远程
+	go func() {
+		_, err := io.Copy(remoteConn, clientConn)
+		errChan <- err
+	}()
+
+	// 阻塞等待：无论哪一端断开、报错或者被 Keep-Alive 掐断，都会立刻放行
+	<-errChan
+
+	// 放行后触发函数结尾，由双层 defer 去销毁双方的连接 Socket
+	// 完美释放不会残留任何 ESTAB 状态
+	clientConn.Close()
+	remoteConn.Close()
+	<-errChan // 回收最后一个协程的信号
 }
